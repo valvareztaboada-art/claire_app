@@ -4,6 +4,9 @@ import { LANGS, makeI18n, waCancelFR, waChangeFR } from "./i18n";
 
 const CLAIRE_EMAIL = "clairesalabelle3@gmail.com";
 const CLAIRE_WA = "5491161266205"; // 54 9 11 6126 6205
+// Contraseña de la profesora: se define en Vercel (y en .env.local para dev) como
+// VITE_TEACHER_PASSWORD. Si no está seteada, la profesora entra solo con el mail.
+const TEACHER_PW = import.meta.env.VITE_TEACHER_PASSWORD || "";
 
 const PALETA = ["#6FA292", "#94688A", "#C39331", "#BF7452", "#5F84A2", "#B87C90", "#3E9A90", "#8C86C0", "#8A9A46", "#C86B58", "#3F7C8C", "#A96FA0"];
 const GRUPO_COLOR = "#5C7C77";
@@ -28,15 +31,15 @@ function ocurrencias(w, reglas, excepciones) {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap');
 * { box-sizing:border-box; } body { margin:0; }
-.aula { --paper:#F3F6F4; --panel:#FFFFFF; --ink:#16302D; --ink-soft:#5A716D; --teal:#0F766E; --teal-deep:#0B5A54; --honey:#DF9B2D; --line:#DCE4E0; --line-soft:#EAF0ED; --danger:#B5524A;
+.aula { --paper:#F5F4ED; --panel:#FFFFFF; --ink:#241F33; --ink-soft:#726B85; --teal:#8B6EC7; --teal-deep:#6B4EA8; --honey:#F6A93A; --corn:#5E84E2; --primrose:#F7EC8D; --line:#E7E3DA; --line-soft:#EFECE4; --danger:#B5524A;
   font-family:'Inter',system-ui,sans-serif; color:var(--ink); background:var(--paper); min-height:100vh; -webkit-font-smoothing:antialiased; }
-.aula h1,.aula h2,.aula h3{ font-family:'Fraunces',serif; font-weight:500; margin:0; }
+.aula h1,.aula h2,.aula h3{ font-family:'Bricolage Grotesque',sans-serif; font-weight:700; margin:0; letter-spacing:-.01em; }
 .wrap{ max-width:1080px; margin:0 auto; padding:22px 20px 70px; }
 .topbar{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
 .brand{ display:flex; align-items:baseline; gap:10px; }
-.brand .mark{ font-family:'Fraunces',serif; font-size:29px; font-weight:600; color:var(--teal-deep); letter-spacing:-.01em; }
+.brand .mark{ font-family:'Bricolage Grotesque',sans-serif; font-size:29px; font-weight:800; color:var(--teal-deep); letter-spacing:-.02em; }
 .brand .sub{ font-size:13px; color:var(--ink-soft); }
 .seg{ display:inline-flex; background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:4px; gap:2px; flex-wrap:wrap; }
 .seg button{ border:0; background:transparent; font:inherit; font-size:14px; color:var(--ink-soft); padding:8px 15px; border-radius:8px; cursor:pointer; position:relative; }
@@ -104,7 +107,7 @@ const CSS = `
 .solic.cancel{ border-left-color:var(--danger); }
 .solic .t{ font-size:15px; font-weight:600; } .solic .d{ font-size:13px; color:var(--ink-soft); margin-top:5px; line-height:1.5; } .solic .acts{ display:flex; gap:8px; margin-top:12px; align-items:center; }
 .miclase{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; border-left:5px solid var(--c); margin-bottom:14px; }
-.miclase .lbl{ font-size:12.5px; color:var(--ink-soft); } .miclase .big{ font-family:'Fraunces',serif; font-size:26px; margin:2px 0 12px; text-transform:capitalize; }
+.miclase .lbl{ font-size:12.5px; color:var(--ink-soft); } .miclase .big{ font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:26px; margin:2px 0 12px; text-transform:capitalize; }
 .zoomlink{ margin-top:14px; } .zoomlink .zl{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:5px; }
 .linkcopy{ display:flex; align-items:center; gap:8px; background:#F2F6F5; border:1px solid var(--line); border-radius:9px; padding:8px 10px; flex-wrap:wrap; }
 .linkcopy code{ font-size:12.5px; color:var(--ink); word-break:break-all; font-family:ui-monospace,Menlo,monospace; }
@@ -117,8 +120,14 @@ const CSS = `
 .flowbox .msg{ background:#fff; border:1px solid #CDE7D6; border-radius:10px; padding:11px 13px; font-size:13px; line-height:1.55; } .flowbox.pick .msg{ border-color:#EBD9A9; }
 .flowbox .fa{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
 .acceptbar{ display:flex; gap:8px; align-items:center; margin-top:12px; flex-wrap:wrap; font-size:13px; color:var(--ink-soft); }
-.landing{ max-width:440px; margin:7vh auto 0; text-align:center; }
-.landing .mark{ font-family:'Fraunces',serif; font-size:40px; font-weight:600; color:var(--teal-deep); }
+.landing{ max-width:440px; margin:7vh auto 0; text-align:center; position:relative; z-index:1; }
+.landing .mark{ font-family:'Bricolage Grotesque',sans-serif; font-size:58px; font-weight:800; letter-spacing:-.03em; line-height:1; background:linear-gradient(96deg,#6B4EA8,#5E84E2 45%,#F6A93A); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.landing-bg{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+.landing-bg .blob{ position:absolute; border-radius:50%; filter:blur(72px); opacity:.26; }
+.landing-bg .lb1{ width:42vw; height:44vw; left:-8vw; top:-10vw; background:radial-gradient(circle at 45% 45%, var(--teal), transparent 70%); }
+.landing-bg .lb2{ width:46vw; height:46vw; right:-10vw; top:0; background:radial-gradient(circle at 55% 45%, var(--corn), transparent 68%); }
+.landing-bg .lb3{ width:48vw; height:46vw; right:0; bottom:-18vw; background:radial-gradient(circle at 50% 50%, var(--honey), transparent 70%); }
+.landing-bg .lb4{ width:40vw; height:42vw; left:-6vw; bottom:-14vw; background:radial-gradient(circle at 50% 50%, var(--primrose), transparent 72%); }
 .landing .sub{ color:var(--ink-soft); margin:6px 0 20px; }
 .landing .langrow{ display:flex; justify-content:center; margin-bottom:26px; }
 .langpick{ display:inline-flex; flex-direction:column; align-items:center; gap:8px; }
@@ -151,7 +160,8 @@ export default function App() {
   const i18n = useMemo(() => makeI18n(lang), [lang]);
   const changeLang = (l) => { setLang(l); try { localStorage.setItem("aula_lang", l); } catch (e) {} };
 
-  const [sesion, setSesion] = useState(null);
+  const [sesion, setSesionRaw] = useState(() => { try { return JSON.parse(localStorage.getItem("aula_session") || "null"); } catch (e) { return null; } });
+  const setSesion = (s) => { setSesionRaw(s); try { if (s) localStorage.setItem("aula_session", JSON.stringify(s)); else localStorage.removeItem("aula_session"); } catch (e) {} };
   const [alumnos, setAlumnos] = useState([]);
   const [reglas, setReglas] = useState([]);
   const [excepciones, setExcepciones] = useState([]);
@@ -241,14 +251,21 @@ function Landing({ i18n, setLang, cargando, error, alumnos, onProfesor, onAlumno
   const { t } = i18n;
   const [modo, setModo] = useState(null);
   const [mail, setMail] = useState("");
+  const [pw, setPw] = useState("");
   const [err, setErr] = useState(null);
+  const pidePw = modo === "profesor" && !!TEACHER_PW;
   const entrar = () => {
     const m = mail.trim().toLowerCase();
-    if (modo === "profesor") { if (m === CLAIRE_EMAIL) onProfesor(); else setErr(t("errNotTeacher")); }
-    else { const a = alumnos.find((x) => (x.email || "").trim().toLowerCase() === m); if (a) onAlumno(a.id); else setErr(t("errNotStudent")); }
+    if (modo === "profesor") {
+      if (m !== CLAIRE_EMAIL) { setErr(t("errNotTeacher")); return; }
+      if (TEACHER_PW && pw !== TEACHER_PW) { setErr(t("errPassword")); return; }
+      onProfesor();
+    } else { const a = alumnos.find((x) => (x.email || "").trim().toLowerCase() === m); if (a) onAlumno(a.id); else setErr(t("errNotStudent")); }
   };
   return (
-    <div className="wrap"><div className="landing">
+    <div className="wrap">
+      <div className="landing-bg"><span className="blob lb1" /><span className="blob lb2" /><span className="blob lb3" /><span className="blob lb4" /></div>
+      <div className="landing">
       <div className="mark">Aula</div>
       <div className="sub">{t("subtitle")}</div>
       <div className="langrow">
@@ -271,10 +288,11 @@ function Landing({ i18n, setLang, cargando, error, alumnos, onProfesor, onAlumno
           <h3>{modo === "alumno" ? t("loginStudentTitle") : t("loginTeacherTitle")}</h3>
           <p>{modo === "alumno" ? t("loginStudentHint") : t("loginTeacherHint")}</p>
           <div className="field"><label>{t("email")}</label><input value={mail} autoFocus onChange={(e) => { setMail(e.target.value); setErr(null); }} onKeyDown={(e) => e.key === "Enter" && entrar()} placeholder="mail@mail.com" /></div>
+          {pidePw && <div className="field"><label>{t("password")}</label><input type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(null); }} onKeyDown={(e) => e.key === "Enter" && entrar()} placeholder="••••••••" /></div>}
           {err && <div className="state err" style={{ marginBottom: 12 }}>{err}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => { setModo(null); setMail(""); setErr(null); }}>{t("back")}</button>
-            <button className="btn btn-primary" disabled={cargando || !mail.trim()} onClick={entrar}>{t("enter")}</button>
+            <button className="btn btn-ghost" onClick={() => { setModo(null); setMail(""); setPw(""); setErr(null); }}>{t("back")}</button>
+            <button className="btn btn-primary" disabled={cargando || !mail.trim() || (pidePw && !pw.trim())} onClick={entrar}>{t("enter")}</button>
           </div>
         </div>
       )}
