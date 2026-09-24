@@ -453,7 +453,7 @@ function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, 
     <>
       <div className="sechead"><div><h2>{t("messagesTitle")}</h2><div className="meta">{t("messagesHint")}</div></div>
         <button className="btn btn-primary" onClick={onNuevo}>{t("newMessage")}</button></div>
-      <div className="hintbar">{t("tipName")} · {t("localOnly")}</div>
+      <div className="hintbar">{t("tipName")}</div>
       {mensajes.length === 0 ? <div className="empty">{t("noMessages")}</div> : mensajes.map((m) => {
         const fs = files[m.id] || [];
         return (
@@ -482,22 +482,15 @@ function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, 
 
 function MensajeModal({ msg, busy, i18n, onGuardar, onCerrar }) {
   const { t } = i18n;
-  const [f, setF] = useState({ id: msg.id, titulo: msg.titulo || "", cuerpo: msg.cuerpo || "", archivos: msg.archivos || [] });
-  const [nf, setNf] = useState("");
+  const [f, setF] = useState({ id: msg.id, titulo: msg.titulo || "", cuerpo: msg.cuerpo || "" });
   const set = (k, v) => setF({ ...f, [k]: v });
   const valido = f.titulo.trim() && f.cuerpo.trim();
-  const addFile = () => { if (nf.trim()) { set("archivos", [...f.archivos, nf.trim()]); setNf(""); } };
-  const rmFile = (i) => set("archivos", f.archivos.filter((_, j) => j !== i));
   return (
     <div className="overlay" onClick={onCerrar}><div className="modal" onClick={(e) => e.stopPropagation()}>
       <h3>{msg.id ? t("edit") : t("newMessage")}</h3>
       <div className="msub">{t("tipName")}</div>
       <div className="field"><label>{t("msgTitle")}</label><input value={f.titulo} autoFocus onChange={(e) => set("titulo", e.target.value)} /></div>
       <div className="field"><label>{t("msgBody")}</label><textarea rows={5} value={f.cuerpo} onChange={(e) => set("cuerpo", e.target.value)} placeholder="Bonjour {nombre}, …" /></div>
-      <div className="field"><label>{t("msgFiles")}</label>
-        {f.archivos.map((x, i) => <div key={i} className="filerow"><span className="fchip">📎 {x}</span><span className="x" onClick={() => rmFile(i)}>✕</span></div>)}
-        <div style={{ display: "flex", gap: 8 }}><input value={nf} onChange={(e) => setNf(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addFile())} placeholder="lesson1.mp3" /><button className="btn btn-ghost sm" onClick={addFile}>{t("addFile")}</button></div>
-      </div>
       <div className="macts"><span />
         <div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={!valido || busy} onClick={() => onGuardar({ id: f.id, titulo: f.titulo, cuerpo: f.cuerpo })}>{busy ? t("saving") : t("save")}</button></div>
       </div>
