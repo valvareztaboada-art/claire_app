@@ -426,35 +426,56 @@ function SemanaCal({ occ, alumnos, alumnoDe, onEditar, i18n }) {
 function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, onBorrar }) {
   const { t } = i18n;
   const [sel, setSel] = useState({});
-  const enviar = (m) => {
-    const aid = sel[m.id]; const a = alumnos.find((x) => x.id === aid);
+  const [files, setFiles] = useState({});     // { msgId: [File,...] }
+  const [enviando, setEnviando] = useState(null);
+
+  const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(file); });
+  const onPick = (mid, list) => setFiles((prev) => ({ ...prev, [mid]: [...(prev[mid] || []), ...Array.from(list)] }));
+  const rmFile = (mid, i) => setFiles((prev) => ({ ...prev, [mid]: (prev[mid] || []).filter((_, j) => j !== i) }));
+
+  const enviar = async (m) => {
+    const a = alumnos.find((x) => x.id === sel[m.id]);
     if (!a) { flash(t("pickStudent")); return; }
-    const nombre = a.nombre.split(" ")[0];
-    const cuerpo = (m.cuerpo || "").replace(/\{nombre\}/g, nombre);
-    const url = `mailto:${a.email}?subject=${encodeURIComponent(m.titulo)}&body=${encodeURIComponent(cuerpo)}`;
-    window.location.href = url;
+    setEnviando(m.id);
+    try {
+      const nombre = a.nombre.split(" ")[0];
+      const text = (m.cuerpo || "").replace(/\{nombre\}/g, nombre);
+      const attachments = [];
+      for (const f of (files[m.id] || [])) attachments.push({ filename: f.name, content: await toB64(f), contentType: f.type || undefined });
+      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: a.email, subject: m.titulo, text, attachments }) });
+      if (r.ok) { flash(t("sentOk")); setFiles((prev) => ({ ...prev, [m.id]: [] })); }
+      else { let msg = t("sendErr"); try { const j = await r.json(); if (j.error) msg = j.error; } catch (e) {} flash(msg); }
+    } catch (e) { flash(t("localOnly")); }
+    finally { setEnviando(null); }
   };
+
   return (
     <>
       <div className="sechead"><div><h2>{t("messagesTitle")}</h2><div className="meta">{t("messagesHint")}</div></div>
         <button className="btn btn-primary" onClick={onNuevo}>{t("newMessage")}</button></div>
-      <div className="hintbar">{t("attachNote")} {t("tipName")}</div>
-      {mensajes.length === 0 ? <div className="empty">{t("noMessages")}</div> : mensajes.map((m) => (
-        <div key={m.id} className="msgcard">
-          <div className="mt">{m.titulo}</div>
-          <div className="mb">{m.cuerpo}</div>
-          {m.archivos && m.archivos.length > 0 && <div className="files">{m.archivos.map((f, i) => <span key={i} className="fchip">📎 {f}</span>)}</div>}
-          <div className="foot">
-            <select value={sel[m.id] || ""} onChange={(e) => setSel({ ...sel, [m.id]: e.target.value })}>
-              <option value="">{t("sendTo")}</option>
-              {alumnos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </select>
-            <button className="btn btn-primary sm" onClick={() => enviar(m)}>{t("send")}</button>
-            <button className="linklike" onClick={() => onEditar(m)}>{t("edit")}</button>
-            <button className="linklike" style={{ color: "#B5524A" }} disabled={busy} onClick={() => onBorrar(m.id)}>{t("delete")}</button>
+      <div className="hintbar">{t("tipName")} · {t("localOnly")}</div>
+      {mensajes.length === 0 ? <div className="empty">{t("noMessages")}</div> : mensajes.map((m) => {
+        const fs = files[m.id] || [];
+        return (
+          <div key={m.id} className="msgcard">
+            <div className="mt">{m.titulo}</div>
+            <div className="mb">{m.cuerpo}</div>
+            {fs.length > 0 && <div className="files">{fs.map((f, i) => <span key={i} className="fchip">📎 {f.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => rmFile(m.id, i)}>✕</span></span>)}</div>}
+            <div className="foot">
+              <select value={sel[m.id] || ""} onChange={(e) => setSel({ ...sel, [m.id]: e.target.value })}>
+                <option value="">{t("sendTo")}</option>
+                {alumnos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+              <label className="btn btn-ghost sm" style={{ cursor: "pointer" }}>{t("attachFiles")}
+                <input type="file" multiple style={{ display: "none" }} onChange={(e) => { onPick(m.id, e.target.files); e.target.value = ""; }} />
+              </label>
+              <button className="btn btn-primary sm" disabled={enviando === m.id} onClick={() => enviar(m)}>{enviando === m.id ? t("sending") : t("send")}</button>
+              <button className="linklike" onClick={() => onEditar(m)}>{t("edit")}</button>
+              <button className="linklike" style={{ color: "#B5524A" }} disabled={busy} onClick={() => onBorrar(m.id)}>{t("delete")}</button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }
