@@ -16,17 +16,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { to, subject, text, html, attachments } = req.body || {};
+    const { to, subject, text, html, attachments, attachmentUrls } = req.body || {};
     if (!to || (Array.isArray(to) && to.length === 0)) return res.status(400).json({ error: "Falta el destinatario (to)." });
 
     const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
 
-    // attachments: [{ filename, content(base64), contentType }]
-    const atts = (attachments || []).map((a) => ({
+    // attachments: [{ filename, content(base64), contentType }] (archivos sueltos de esta vez)
+    const b64 = (attachments || []).map((a) => ({
       filename: a.filename,
       content: Buffer.from(a.content, "base64"),
       contentType: a.contentType || undefined,
     }));
+    // attachmentUrls: [{ filename, url, contentType }] (archivos guardados: nodemailer los baja del URL)
+    const byUrl = (attachmentUrls || []).map((a) => ({
+      filename: a.filename,
+      path: a.url,
+      contentType: a.contentType || undefined,
+    }));
+    const atts = [...byUrl, ...b64];
 
     await transporter.sendMail({
       from: `Claire · Aula <${user}>`,

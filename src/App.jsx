@@ -394,7 +394,7 @@ function Profesor({ data, busy, handlers, i18n, setLang, flash, onSalir }) {
 
       {modalAlumno && <AlumnoModal alumno={modalAlumno} busy={busy} i18n={i18n} onGuardar={(a) => handlers.guardarAlumno(a, () => setModalAlumno(null))} onBorrar={(id) => handlers.borrarAlumno(id, () => setModalAlumno(null))} onCerrar={() => setModalAlumno(null)} />}
       {modalClase && <ClaseModal occ={modalClase} semana={semana} alumnos={alumnos} busy={busy} i18n={i18n} onGuardar={(f) => handlers.guardarOcc(f, modalClase.nuevo ? null : modalClase, semana, () => setModalClase(null))} onEliminar={(rec) => handlers.eliminarOcc(modalClase, rec, semana, () => setModalClase(null))} onCerrar={() => setModalClase(null)} />}
-      {modalMsg && <MensajeModal msg={modalMsg} busy={busy} i18n={i18n} onGuardar={(m) => handlers.guardarMensaje(m, () => setModalMsg(null))} onCerrar={() => setModalMsg(null)} />}
+      {modalMsg && <MensajeModal msg={modalMsg} busy={busy} i18n={i18n} flash={flash} onGuardar={(m) => handlers.guardarMensaje(m, () => setModalMsg(null))} onCerrar={() => setModalMsg(null)} />}
     </>
   );
 }
@@ -440,9 +440,13 @@ function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, 
     try {
       const nombre = a.nombre.split(" ")[0];
       const text = (m.cuerpo || "").replace(/\{nombre\}/g, nombre);
+      // adjuntos guardados en el mensaje -> URL firmada (nodemailer los baja)
+      const attachmentUrls = [];
+      for (const ad of (m.archivos || [])) attachmentUrls.push({ filename: ad.name, url: await api.urlFirmada(ad.path), contentType: ad.type || undefined });
+      // adjuntos sueltos de esta vez -> base64
       const attachments = [];
       for (const f of (files[m.id] || [])) attachments.push({ filename: f.name, content: await toB64(f), contentType: f.type || undefined });
-      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: a.email, subject: m.titulo, text, attachments }) });
+      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: a.email, subject: m.titulo, text, attachments, attachmentUrls }) });
       if (r.ok) { flash(t("sentOk")); setFiles((prev) => ({ ...prev, [m.id]: [] })); }
       else { let msg = t("sendErr"); try { const j = await r.json(); if (j.error) msg = j.error; } catch (e) {} flash(msg); }
     } catch (e) { flash(t("localOnly")); }
@@ -460,7 +464,8 @@ function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, 
           <div key={m.id} className="msgcard">
             <div className="mt">{m.titulo}</div>
             <div className="mb">{m.cuerpo}</div>
-            {fs.length > 0 && <div className="files">{fs.map((f, i) => <span key={i} className="fchip">📎 {f.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => rmFile(m.id, i)}>✕</span></span>)}</div>}
+            {(m.archivos || []).length > 0 && <div className="files">{m.archivos.map((ad, i) => <span key={i} className="fchip">📎 {ad.name}</span>)}</div>}
+            {fs.length > 0 && <div className="files">{fs.map((f, i) => <span key={i} className="fchip" style={{ background: "#EFECE4" }}>+ {f.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => rmFile(m.id, i)}>✕</span></span>)}</div>}
             <div className="foot">
               <select value={sel[m.id] || ""} onChange={(e) => setSel({ ...sel, [m.id]: e.target.value })}>
                 <option value="">{t("sendTo")}</option>
@@ -480,19 +485,36 @@ function MensajesTab({ mensajes, alumnos, busy, i18n, flash, onNuevo, onEditar, 
   );
 }
 
-function MensajeModal({ msg, busy, i18n, onGuardar, onCerrar }) {
+function MensajeModal({ msg, busy, i18n, flash, onGuardar, onCerrar }) {
   const { t } = i18n;
-  const [f, setF] = useState({ id: msg.id, titulo: msg.titulo || "", cuerpo: msg.cuerpo || "" });
-  const set = (k, v) => setF({ ...f, [k]: v });
+  const [f, setF] = useState({ id: msg.id, titulo: msg.titulo || "", cuerpo: msg.cuerpo || "", archivos: msg.archivos || [] });
+  const [subiendo, setSubiendo] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const valido = f.titulo.trim() && f.cuerpo.trim();
+
+  const onPick = async (list) => {
+    const arr = Array.from(list); if (!arr.length) return;
+    setSubiendo(true);
+    try { const nuevos = []; for (const file of arr) nuevos.push(await api.subirAdjunto(file)); setF((p) => ({ ...p, archivos: [...p.archivos, ...nuevos] })); }
+    catch (e) { flash && flash(e.message); }
+    finally { setSubiendo(false); }
+  };
+  const rmAdj = async (i) => { const ad = f.archivos[i]; setF((p) => ({ ...p, archivos: p.archivos.filter((_, j) => j !== i) })); try { await api.borrarAdjunto(ad.path); } catch (e) {} };
+
   return (
     <div className="overlay" onClick={onCerrar}><div className="modal" onClick={(e) => e.stopPropagation()}>
       <h3>{msg.id ? t("edit") : t("newMessage")}</h3>
       <div className="msub">{t("tipName")}</div>
       <div className="field"><label>{t("msgTitle")}</label><input value={f.titulo} autoFocus onChange={(e) => set("titulo", e.target.value)} /></div>
       <div className="field"><label>{t("msgBody")}</label><textarea rows={5} value={f.cuerpo} onChange={(e) => set("cuerpo", e.target.value)} placeholder="Bonjour {nombre}, …" /></div>
+      <div className="field"><label>{t("savedFiles")}</label>
+        {f.archivos.map((ad, i) => <div key={i} className="filerow"><span className="fchip">📎 {ad.name}</span><span className="x" style={{ cursor: "pointer", color: "#B5524A", fontWeight: 700 }} onClick={() => rmAdj(i)}>✕</span></div>)}
+        <label className="btn btn-ghost sm" style={{ cursor: "pointer", marginTop: 6, display: "inline-block" }}>{subiendo ? t("uploading") : t("attachFiles")}
+          <input type="file" multiple style={{ display: "none" }} disabled={subiendo} onChange={(e) => { onPick(e.target.files); e.target.value = ""; }} />
+        </label>
+      </div>
       <div className="macts"><span />
-        <div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={!valido || busy} onClick={() => onGuardar({ id: f.id, titulo: f.titulo, cuerpo: f.cuerpo })}>{busy ? t("saving") : t("save")}</button></div>
+        <div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={!valido || busy || subiendo} onClick={() => onGuardar({ id: f.id, titulo: f.titulo, cuerpo: f.cuerpo, archivos: f.archivos })}>{busy ? t("saving") : t("save")}</button></div>
       </div>
     </div></div>
   );

@@ -97,18 +97,36 @@ export async function borrarSolicitud(id) {
 export async function loadMensajes() {
   const { data, error } = await supabase.from("mensajes").select("*").order("creado", { ascending: false });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((m) => ({ ...m, archivos: m.archivos || [] }));
 }
-export async function crearMensaje({ titulo, cuerpo }) {
-  const { error } = await supabase.from("mensajes").insert({ titulo, cuerpo });
+export async function crearMensaje({ titulo, cuerpo, archivos }) {
+  const { error } = await supabase.from("mensajes").insert({ titulo, cuerpo, archivos: archivos || [] });
   if (error) throw error;
 }
-export async function editarMensaje(id, { titulo, cuerpo }) {
-  const { error } = await supabase.from("mensajes").update({ titulo, cuerpo }).eq("id", id);
+export async function editarMensaje(id, { titulo, cuerpo, archivos }) {
+  const { error } = await supabase.from("mensajes").update({ titulo, cuerpo, archivos: archivos || [] }).eq("id", id);
   if (error) throw error;
 }
 export async function borrarMensaje(id) {
   const { error } = await supabase.from("mensajes").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ─── ADJUNTOS (Supabase Storage, bucket "adjuntos") ───────────────────
+export async function subirAdjunto(file) {
+  const safe = file.name.replace(/[^\w.\-]+/g, "_");
+  const path = `mensajes/${crypto.randomUUID()}_${safe}`;
+  const { error } = await supabase.storage.from("adjuntos").upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) throw error;
+  return { path, name: file.name, type: file.type || "" };
+}
+export async function urlFirmada(path) {
+  const { data, error } = await supabase.storage.from("adjuntos").createSignedUrl(path, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+export async function borrarAdjunto(path) {
+  const { error } = await supabase.storage.from("adjuntos").remove([path]);
   if (error) throw error;
 }
 
