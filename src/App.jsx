@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as api from "./api";
 import { LANGS, makeI18n, waCancelFR, waChangeFR } from "./i18n";
+import { emparejar, limpiarChat } from "./zoom";
 
 const CLAIRE_EMAIL = "clairesalabelle3@gmail.com";
 const CLAIRE_WA = "5491161266205"; // 54 9 11 6126 6205
@@ -145,6 +146,15 @@ const CSS = `
 .msgcard .foot{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
 .msgcard select{ font:inherit; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:6px 9px; background:#fff; color:var(--ink); }
 .filerow{ display:flex; gap:6px; align-items:center; margin-bottom:6px; } .filerow .x{ cursor:pointer; color:var(--ink-soft); font-weight:600; }
+.zbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.zchip{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:20px; padding:4px 6px 4px 10px; font-size:12.5px; background:#fff; }
+.zchip .pd{ width:9px; height:9px; border-radius:50%; }
+.zchip .x{ cursor:pointer; color:var(--ink-soft); font-weight:700; padding:0 4px; } .zchip .x:hover{ color:var(--danger); }
+.ztxt{ width:100%; font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; padding:10px 12px; margin-top:10px; resize:vertical; color:var(--ink); min-height:120px; line-height:1.5; } .ztxt:focus{ outline:none; border-color:var(--teal); }
+.zsel{ font:inherit; font-size:12.5px; border:1px dashed var(--line); border-radius:20px; padding:5px 10px; background:#fff; color:var(--ink-soft); cursor:pointer; }
+.zrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.zlabel{ font-size:12.5px; color:var(--ink-soft); }
+.znote{ font-size:12.5px; color:var(--ink-soft); background:#F7FAF9; border:1px solid var(--line-soft); border-radius:10px; padding:10px 12px; margin-top:12px; line-height:1.5; }
 `;
 
 function LangSelector({ i18n, setLang }) {
@@ -365,10 +375,7 @@ function Profesor({ data, busy, handlers, i18n, setLang, flash, onSalir }) {
       )}
 
       {tab === "envios" && (
-        <>
-          <div className="sechead"><div><h2>{t("sendScaffTitle")}</h2></div></div>
-          <div className="empty"><h3>🎧 Zoom</h3><div style={{ maxWidth: 520, margin: "0 auto", lineHeight: 1.6 }}>{t("sendScaffBody")}</div></div>
-        </>
+        <EnviosTab reglas={reglas} excepciones={excepciones} alumnos={alumnos} alumnoDe={alumnoDe} i18n={i18n} flash={flash} />
       )}
 
       {tab === "modif" && (
@@ -511,6 +518,169 @@ function MensajeModal({ msg, busy, i18n, flash, onGuardar, onCerrar }) {
         <div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={!valido || busy || subiendo} onClick={() => onGuardar({ id: f.id, titulo: f.titulo, cuerpo: f.cuerpo, archivos: f.archivos })}>{busy ? t("saving") : t("save")}</button></div>
       </div>
     </div></div>
+  );
+}
+
+// ═══════════════ ENVÍOS (Zoom) ═══════════════
+const IMG_EXT = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic"];
+const soportaFS = () => typeof window !== "undefined" && "showDirectoryPicker" in window;
+const mondayDate = () => { const d = new Date(); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); d.setHours(0, 0, 0, 0); return d; };
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const fileB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(file); });
+function idbReq(write, run) {
+  return new Promise((res) => {
+    let req; try { req = indexedDB.open("aula_kv", 1); } catch (e) { return res(null); }
+    req.onupgradeneeded = () => { try { req.result.createObjectStore("kv"); } catch (e) {} };
+    req.onsuccess = () => { try { const st = req.result.transaction("kv", write ? "readwrite" : "readonly").objectStore("kv"); const r2 = run(st); r2.onsuccess = () => res(r2.result); r2.onerror = () => res(null); } catch (e) { res(null); } };
+    req.onerror = () => res(null);
+  });
+}
+const idbGet = (k) => idbReq(false, (st) => st.get(k));
+const idbSet = (k, v) => idbReq(true, (st) => st.put(v, k));
+async function* walkDir(dir) { for await (const e of dir.values()) { if (e.kind === "file") yield e; else if (e.kind === "directory") yield* walkDir(e); } }
+async function ensurePerm(h) { try { const o = { mode: "read" }; if ((await h.queryPermission(o)) === "granted") return true; return (await h.requestPermission(o)) === "granted"; } catch (e) { return false; } }
+const saludoFR = (nombres) => { const n = nombres.length <= 1 ? (nombres[0] || "") : nombres.slice(0, -1).join(", ") + " et " + nombres.slice(-1); return `Bonjour ${n}, je t'envoie ce qu'on a vu aujourd'hui en cours.`; };
+
+function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
+  const { t, DIAS } = i18n;
+  const soporta = soportaFS();
+  const [dir, setDir] = useState(null);
+  const [dirName, setDirName] = useState("");
+  const hoyIdx = (() => { const d = new Date().getDay(); return d === 0 ? 5 : d - 1; })();
+  const [dia, setDia] = useState(hoyIdx);
+  const [files, setFiles] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [destMap, setDestMap] = useState({});
+  const [cuerpoMap, setCuerpoMap] = useState({});
+  const [imgsMap, setImgsMap] = useState({});
+  const [sinAsig, setSinAsig] = useState([]);
+  const [enviando, setEnviando] = useState(null);
+
+  async function leer(h) {
+    setCargando(true);
+    try {
+      const out = []; let i = 0;
+      for await (const e of walkDir(h)) {
+        const file = await e.getFile(); const ext = (file.name.split(".").pop() || "").toLowerCase();
+        const isImg = IMG_EXT.includes(ext), isTxt = ext === "txt"; if (!isImg && !isTxt) continue;
+        out.push({ id: "f" + (i++), name: file.name, tipo: isTxt ? "chat" : "img", mod: new Date(file.lastModified), file });
+      }
+      setFiles(out);
+    } catch (e) { flash(e.message); } finally { setCargando(false); }
+  }
+  async function elegir() {
+    if (!soporta) { flash(t("zoomUnsupported")); return; }
+    try { const h = await window.showDirectoryPicker(); if (!(await ensurePerm(h))) return; setDir(h); setDirName(h.name); await idbSet("zoomDir", h); await leer(h); } catch (e) {}
+  }
+  useEffect(() => { (async () => { if (!soporta) return; const h = await idbGet("zoomDir"); if (h && await ensurePerm(h)) { setDir(h); setDirName(h.name); await leer(h); } })(); }, []);
+
+  const occDia = useMemo(() => ocurrencias(0, reglas, excepciones).filter((o) => o.dia === dia).sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia]);
+  const fechaDia = useMemo(() => { const d = mondayDate(); d.setDate(d.getDate() + dia); return d; }, [dia]);
+  const seedBody = (o) => saludoFR(o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).filter(Boolean));
+
+  useEffect(() => { (async () => {
+    const filesDia = files.filter((f) => sameDay(f.mod, fechaDia));
+    const { porClase, sinAsignar } = emparejar(filesDia, occDia);
+    const dm = {}, cm = {}, im = {};
+    for (const o of occDia) {
+      const objs = (porClase[o.key] || []).map((id) => filesDia.find((f) => f.id === id)).filter(Boolean);
+      if (objs.length === 0) continue;
+      dm[o.key] = [...o.alumnoIds];
+      im[o.key] = objs.filter((f) => f.tipo === "img").map((f) => ({ id: f.id, name: f.name, file: f.file }));
+      let lines = [];
+      for (const c of objs.filter((f) => f.tipo === "chat")) { try { lines = lines.concat(limpiarChat(await c.file.text())); } catch (e) {} }
+      cm[o.key] = seedBody(o) + (lines.length ? "\n\n" + lines.map((l) => "- " + l).join("\n") : "");
+    }
+    const sa = (sinAsignar || []).map((id) => filesDia.find((f) => f.id === id)).filter(Boolean).map((f) => ({ id: f.id, name: f.name, tipo: f.tipo, file: f.file }));
+    setDestMap(dm); setCuerpoMap(cm); setImgsMap(im); setSinAsig(sa);
+  })(); }, [files, dia, occDia, fechaDia]);
+
+  const addDest = (k, id) => setDestMap((p) => ({ ...p, [k]: (p[k] || []).includes(id) ? p[k] : [...(p[k] || []), id] }));
+  const rmDest = (k, id) => setDestMap((p) => ({ ...p, [k]: (p[k] || []).filter((x) => x !== id) }));
+  const rmImg = (k, id) => setImgsMap((p) => ({ ...p, [k]: (p[k] || []).filter((x) => x.id !== id) }));
+  const descartar = (fid) => setSinAsig((p) => p.filter((x) => x.id !== fid));
+  const asignar = async (f, k) => {
+    const o = occDia.find((x) => x.key === k); if (!o) return;
+    descartar(f.id);
+    setDestMap((p) => (p[k] ? p : { ...p, [k]: [...o.alumnoIds] }));
+    if (f.tipo === "img") { setImgsMap((p) => ({ ...p, [k]: [...(p[k] || []), { id: f.id, name: f.name, file: f.file }] })); setCuerpoMap((p) => (p[k] !== undefined ? p : { ...p, [k]: seedBody(o) })); }
+    else { let lines = []; try { lines = limpiarChat(await f.file.text()); } catch (e) {} setCuerpoMap((p) => { const base = p[k] !== undefined ? p[k] : seedBody(o); return { ...p, [k]: base + (lines.length ? "\n" + lines.map((l) => "- " + l).join("\n") : "") }; }); }
+  };
+  const enviar = async (o) => {
+    const dest = destMap[o.key] || []; if (!dest.length) { flash(t("pickStudent")); return; }
+    setEnviando(o.key);
+    try {
+      const to = dest.map((id) => alumnoDe(id)?.email).filter(Boolean).join(", ");
+      const attachments = [];
+      for (const im of (imgsMap[o.key] || [])) attachments.push({ filename: im.name, content: await fileB64(im.file), contentType: im.file.type || undefined });
+      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: "Cours de français", text: cuerpoMap[o.key] || "", attachments }) });
+      if (r.ok) { flash(t("sentOk")); setCuerpoMap((p) => { const n = { ...p }; delete n[o.key]; return n; }); }
+      else { let m = t("sendErr"); try { const j = await r.json(); if (j.error) m = j.error; } catch (e) {} flash(m); }
+    } catch (e) { flash(t("localOnly")); } finally { setEnviando(null); }
+  };
+
+  const cards = occDia.filter((o) => cuerpoMap[o.key] !== undefined);
+  const sinArchivos = occDia.filter((o) => cuerpoMap[o.key] === undefined);
+
+  if (!soporta) return (<><div className="sechead"><div><h2>{t("sendScaffTitle")}</h2></div></div><div className="state err">{t("zoomUnsupported")}</div></>);
+
+  return (
+    <>
+      <div className="sechead"><div><h2>{t("sendScaffTitle")}</h2><div className="meta">{t("zoomReview")}</div></div></div>
+      <div className="zbar">
+        {!dir ? <button className="btn btn-primary" onClick={elegir}>{t("zoomSelectFolder")}</button>
+          : <><span className="zlabel">📁 {t("zoomFolder")}: <b>{dirName}</b></span><button className="btn btn-ghost sm" onClick={elegir}>{t("zoomReconnect")}</button></>}
+        <span className="zlabel" style={{ marginLeft: "auto" }}>{t("zoomDay")}:</span>
+        <select className="zsel" value={dia} onChange={(e) => setDia(Number(e.target.value))}>
+          {DIAS.map((d, i) => <option key={i} value={i}>{d}{i === hoyIdx ? " ·" : ""}</option>)}
+        </select>
+      </div>
+
+      {cargando && <div className="state load">{t("zoomScanning")}</div>}
+      {!cargando && dir && cards.length === 0 && sinAsig.length === 0 && <div className="empty">{t("zoomNoFiles")}</div>}
+
+      {cards.map((o) => {
+        const dest = destMap[o.key] || []; const imgs = imgsMap[o.key] || [];
+        const restantes = alumnos.filter((a) => !dest.includes(a.id));
+        const tituloOrig = o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join(", ");
+        const color = o.alumnoIds.length === 1 ? (alumnoDe(o.alumnoIds[0])?.color || GRUPO_COLOR) : GRUPO_COLOR;
+        return (
+          <div key={o.key} className="msgcard" style={{ borderLeft: `4px solid ${color}` }}>
+            <div className="mt">{o.ini}–{o.fin} · {tituloOrig}{o.alumnoIds.length > 1 ? ` (${t("group")})` : ""}</div>
+            <div className="zrow"><span className="zlabel">{/* destinatarios */}</span>
+              {dest.map((id) => { const a = alumnoDe(id); if (!a) return null; return <span key={id} className="zchip"><span className="pd" style={{ background: a.color }} />{a.nombre}<span className="x" onClick={() => rmDest(o.key, id)}>✕</span></span>; })}
+              {restantes.length > 0 && <select className="zsel" value="" onChange={(e) => e.target.value && addDest(o.key, Number(e.target.value))}><option value="">{t("sendTo")}</option>{restantes.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>}
+            </div>
+            {imgs.length > 0 && <div className="zrow">{imgs.map((im) => <span key={im.id} className="fchip">🖼 {im.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => rmImg(o.key, im.id)}>✕</span></span>)}</div>}
+            <div className="zlabel" style={{ marginTop: 10 }}>{t("zoomPreview")}</div>
+            <textarea className="ztxt" value={cuerpoMap[o.key]} onChange={(e) => setCuerpoMap((p) => ({ ...p, [o.key]: e.target.value }))} />
+            <div className="foot" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+              <button className="btn btn-primary sm" disabled={enviando === o.key} onClick={() => enviar(o)}>{enviando === o.key ? t("sending") : t("send")}</button>
+            </div>
+          </div>
+        );
+      })}
+
+      {sinAsig.length > 0 && (
+        <div className="msgcard" style={{ borderLeft: "4px solid var(--honey)" }}>
+          <div className="mt">{t("zoomUnassigned")}</div>
+          {sinAsig.map((f) => (
+            <div key={f.id} className="zrow">
+              <span className="fchip">{f.tipo === "img" ? "🖼" : "📄"} {f.name}</span>
+              <select className="zsel" value="" onChange={(e) => e.target.value && asignar(f, e.target.value)}>
+                <option value="">{t("zoomAssignTo")}</option>
+                {occDia.map((o) => <option key={o.key} value={o.key}>{o.ini} · {o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join(", ")}</option>)}
+              </select>
+              <button className="linklike" style={{ color: "#B5524A" }} onClick={() => descartar(f.id)}>{t("zoomDiscard")}</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {dir && sinArchivos.length > 0 && (
+        <div className="znote">{t("zoomNoClassFiles")} {sinArchivos.map((o) => `${o.ini} ${o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join("/")}`).join(" · ")}</div>
+      )}
+    </>
   );
 }
 
