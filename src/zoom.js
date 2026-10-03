@@ -35,22 +35,21 @@ export function emparejar(files, occ) {
   return { porClase, sinAsignar };
 }
 
-// Limpia el texto del chat de Zoom: saca los encabezados (hora / "From X to Y:")
-// y deja solo los mensajes relevantes. Devuelve un array de líneas.
+// Limpia el texto del chat de Zoom: saca los encabezados (fecha/hora + "From X to Y:")
+// y deja solo los mensajes. Formato real de Zoom:
+//   2026-06-10 17:11:50 From claire salabelle to Everyone:
+//        Pas trop de pluie
 export function limpiarChat(txt) {
   const out = [];
   for (let raw of (txt || "").split(/\r?\n/)) {
     let line = raw.trim();
     if (!line) continue;
-    // encabezado formato nuevo: "08:40:15 From Nombre to Everyone:" (el mensaje viene en la línea siguiente)
-    if (/^\d{1,2}:\d{2}(:\d{2})?\s+From\s+.+?\s+to\s+.+?:?\s*$/i.test(line)) continue;
-    // saca hora al inicio: "08:40:15 ..."
+    // Línea de encabezado "… From Nombre to Everyone:" -> descartar entera
+    if (/\bFrom\b.+\bto\b.+:\s*$/i.test(line) && /\d{1,2}:\d{2}/.test(line)) continue;
+    // Si quedó un prefijo de fecha+hora u hora al inicio del mensaje, sacarlo
+    line = line.replace(/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}(:\d{2})?\s*/, "");
     line = line.replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/, "");
-    // saca "From Nombre to Everyone:" si quedó inline
     line = line.replace(/^From\s+.+?\s+to\s+.+?:\s*/i, "");
-    // saca "Nombre:" al inicio (nombre corto, no un link)
-    const c = line.indexOf(":");
-    if (c > 0 && c < 40 && !/https?/i.test(line.slice(0, c))) line = line.slice(c + 1).trim();
     if (line) out.push(line);
   }
   return out;

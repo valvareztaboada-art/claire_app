@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as api from "./api";
 import { LANGS, makeI18n, waCancelFR, waChangeFR } from "./i18n";
-import { emparejar, limpiarChat } from "./zoom";
+import { ventanas, limpiarChat } from "./zoom";
 
 const CLAIRE_EMAIL = "clairesalabelle3@gmail.com";
 const CLAIRE_WA = "5491161266205"; // 54 9 11 6126 6205
@@ -540,6 +540,7 @@ const idbSet = (k, v) => idbReq(true, (st) => st.put(v, k));
 async function* walkDir(dir) { for await (const e of dir.values()) { if (e.kind === "file") yield e; else if (e.kind === "directory") yield* walkDir(e); } }
 async function ensurePerm(h) { try { const o = { mode: "read" }; if ((await h.queryPermission(o)) === "granted") return true; return (await h.requestPermission(o)) === "granted"; } catch (e) { return false; } }
 const saludoFR = (nombres) => { const n = nombres.length <= 1 ? (nombres[0] || "") : nombres.slice(0, -1).join(", ") + " et " + nombres.slice(-1); return `Bonjour ${n}, je t'envoie ce qu'on a vu aujourd'hui en cours.`; };
+const numerar = (lines, start = 1) => lines.map((l, i) => `${start + i}. ${l}`).join("\n");
 
 function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
   const { t, DIAS } = i18n;
@@ -550,11 +551,13 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
   const [dia, setDia] = useState(hoyIdx);
   const [files, setFiles] = useState([]);
   const [cargando, setCargando] = useState(false);
-  const [destMap, setDestMap] = useState({});
-  const [cuerpoMap, setCuerpoMap] = useState({});
-  const [imgsMap, setImgsMap] = useState({});
-  const [sinAsig, setSinAsig] = useState([]);
+  const [proc, setProc] = useState(new Set());      // archivos ya enviados/descartados (persistente)
+  const [override, setOverride] = useState({});     // {fileKey: claseKey | "__out"} asignaciones manuales de esta sesión
+  const [cuerpoEdit, setCuerpoEdit] = useState({}); // {claseKey: texto editado a mano}
+  const [destEdit, setDestEdit] = useState({});     // {claseKey: [alumnoId]}
   const [enviando, setEnviando] = useState(null);
+
+  const marcarProc = (keys) => setProc((prev) => { const n = new Set(prev); keys.forEach((k) => n.add(k)); idbSet("zoomSent", Array.from(n)); return n; });
 
   async function leer(h) {
     setCargando(true);
@@ -563,7 +566,9 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
       for await (const e of walkDir(h)) {
         const file = await e.getFile(); const ext = (file.name.split(".").pop() || "").toLowerCase();
         const isImg = IMG_EXT.includes(ext), isTxt = ext === "txt"; if (!isImg && !isTxt) continue;
-        out.push({ id: "f" + (i++), name: file.name, tipo: isTxt ? "chat" : "img", mod: new Date(file.lastModified), file });
+        const o = { id: "f" + (i++), key: file.name + "|" + file.lastModified + "|" + file.size, name: file.name, tipo: isTxt ? "chat" : "img", mod: new Date(file.lastModified), file };
+        if (isTxt) { try { o.lines = limpiarChat(await file.text()); } catch (e) { o.lines = []; } }
+        out.push(o);
       }
       setFiles(out);
     } catch (e) { flash(e.message); } finally { setCargando(false); }
@@ -572,55 +577,59 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
     if (!soporta) { flash(t("zoomUnsupported")); return; }
     try { const h = await window.showDirectoryPicker(); if (!(await ensurePerm(h))) return; setDir(h); setDirName(h.name); await idbSet("zoomDir", h); await leer(h); } catch (e) {}
   }
-  useEffect(() => { (async () => { if (!soporta) return; const h = await idbGet("zoomDir"); if (h && await ensurePerm(h)) { setDir(h); setDirName(h.name); await leer(h); } })(); }, []);
+  useEffect(() => { (async () => {
+    const sent = await idbGet("zoomSent"); if (Array.isArray(sent)) setProc(new Set(sent));
+    if (!soporta) return;
+    const h = await idbGet("zoomDir"); if (h && await ensurePerm(h)) { setDir(h); setDirName(h.name); await leer(h); }
+  })(); }, []);
 
   const occDia = useMemo(() => ocurrencias(0, reglas, excepciones).filter((o) => o.dia === dia).sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia]);
   const fechaDia = useMemo(() => { const d = mondayDate(); d.setDate(d.getDate() + dia); return d; }, [dia]);
-  const seedBody = (o) => saludoFR(o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).filter(Boolean));
 
-  useEffect(() => { (async () => {
-    const filesDia = files.filter((f) => sameDay(f.mod, fechaDia));
-    const { porClase, sinAsignar } = emparejar(filesDia, occDia);
-    const dm = {}, cm = {}, im = {};
-    for (const o of occDia) {
-      const objs = (porClase[o.key] || []).map((id) => filesDia.find((f) => f.id === id)).filter(Boolean);
-      if (objs.length === 0) continue;
-      dm[o.key] = [...o.alumnoIds];
-      im[o.key] = objs.filter((f) => f.tipo === "img").map((f) => ({ id: f.id, name: f.name, file: f.file }));
-      let lines = [];
-      for (const c of objs.filter((f) => f.tipo === "chat")) { try { lines = lines.concat(limpiarChat(await c.file.text())); } catch (e) {} }
-      cm[o.key] = seedBody(o) + (lines.length ? "\n\n" + lines.map((l) => "- " + l).join("\n") : "");
+  // Derivar tarjetas / sin asignar / sin archivos, aplicando ventana + override + ya procesados
+  const { cards, sinAsig, sinArchivos } = useMemo(() => {
+    const w = ventanas(occDia);
+    const claseAuto = (f) => { const t2 = f.mod.getHours() * 60 + f.mod.getMinutes(); const m = w.find((x) => t2 >= x.ini && t2 < x.fin); return m ? m.key : null; };
+    const filesDia = files.filter((f) => sameDay(f.mod, fechaDia) && !proc.has(f.key));
+    const byClass = {}; const un = [];
+    for (const f of filesDia) {
+      const ov = override[f.key];
+      const target = ov !== undefined ? (ov === "__out" ? null : ov) : claseAuto(f);
+      if (target && occDia.some((o) => o.key === target)) (byClass[target] = byClass[target] || []).push(f);
+      else un.push(f);
     }
-    const sa = (sinAsignar || []).map((id) => filesDia.find((f) => f.id === id)).filter(Boolean).map((f) => ({ id: f.id, name: f.name, tipo: f.tipo, file: f.file }));
-    setDestMap(dm); setCuerpoMap(cm); setImgsMap(im); setSinAsig(sa);
-  })(); }, [files, dia, occDia, fechaDia]);
+    const cards = occDia.filter((o) => (byClass[o.key] || []).length > 0).map((o) => {
+      const fs = byClass[o.key];
+      const imgs = fs.filter((f) => f.tipo === "img");
+      let lines = []; fs.filter((f) => f.tipo === "chat").forEach((c) => { lines = lines.concat(c.lines || []); });
+      const dest = destEdit[o.key] || o.alumnoIds;
+      const nombres = dest.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).filter(Boolean);
+      const bodyDefault = saludoFR(nombres) + (lines.length ? "\n\n\n" + numerar(lines) : "");
+      return { o, imgs, fileKeys: fs.map((f) => f.key), bodyDefault };
+    });
+    const sinArchivos = occDia.filter((o) => (byClass[o.key] || []).length === 0);
+    return { cards, sinAsig: un, sinArchivos };
+  }, [files, proc, override, dia, occDia, fechaDia, destEdit]);
 
-  const addDest = (k, id) => setDestMap((p) => ({ ...p, [k]: (p[k] || []).includes(id) ? p[k] : [...(p[k] || []), id] }));
-  const rmDest = (k, id) => setDestMap((p) => ({ ...p, [k]: (p[k] || []).filter((x) => x !== id) }));
-  const rmImg = (k, id) => setImgsMap((p) => ({ ...p, [k]: (p[k] || []).filter((x) => x.id !== id) }));
-  const descartar = (fid) => setSinAsig((p) => p.filter((x) => x.id !== fid));
-  const asignar = async (f, k) => {
-    const o = occDia.find((x) => x.key === k); if (!o) return;
-    descartar(f.id);
-    setDestMap((p) => (p[k] ? p : { ...p, [k]: [...o.alumnoIds] }));
-    if (f.tipo === "img") { setImgsMap((p) => ({ ...p, [k]: [...(p[k] || []), { id: f.id, name: f.name, file: f.file }] })); setCuerpoMap((p) => (p[k] !== undefined ? p : { ...p, [k]: seedBody(o) })); }
-    else { let lines = []; try { lines = limpiarChat(await f.file.text()); } catch (e) {} setCuerpoMap((p) => { const base = p[k] !== undefined ? p[k] : seedBody(o); return { ...p, [k]: base + (lines.length ? "\n" + lines.map((l) => "- " + l).join("\n") : "") }; }); }
-  };
-  const enviar = async (o) => {
-    const dest = destMap[o.key] || []; if (!dest.length) { flash(t("pickStudent")); return; }
+  const addDest = (k, id, base) => setDestEdit((p) => { const cur = p[k] || base; return { ...p, [k]: cur.includes(id) ? cur : [...cur, id] }; });
+  const rmDest = (k, id, base) => setDestEdit((p) => { const cur = p[k] || base; return { ...p, [k]: cur.filter((x) => x !== id) }; });
+  const asignar = (f, k) => setOverride((p) => ({ ...p, [f.key]: k }));
+  const sacarImg = (fk) => setOverride((p) => ({ ...p, [fk]: "__out" }));
+  const descartar = (fk) => marcarProc([fk]);
+
+  const enviar = async (card) => {
+    const o = card.o; const dest = destEdit[o.key] || o.alumnoIds; if (!dest.length) { flash(t("pickStudent")); return; }
     setEnviando(o.key);
     try {
       const to = dest.map((id) => alumnoDe(id)?.email).filter(Boolean).join(", ");
       const attachments = [];
-      for (const im of (imgsMap[o.key] || [])) attachments.push({ filename: im.name, content: await fileB64(im.file), contentType: im.file.type || undefined });
-      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: "Cours de français", text: cuerpoMap[o.key] || "", attachments }) });
-      if (r.ok) { flash(t("sentOk")); setCuerpoMap((p) => { const n = { ...p }; delete n[o.key]; return n; }); }
+      for (const im of card.imgs) attachments.push({ filename: im.name, content: await fileB64(im.file), contentType: im.file.type || undefined });
+      const text = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.bodyDefault;
+      const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: "Cours de français", text, attachments }) });
+      if (r.ok) { flash(t("sentOk")); marcarProc(card.fileKeys); setCuerpoEdit((p) => { const n = { ...p }; delete n[o.key]; return n; }); setDestEdit((p) => { const n = { ...p }; delete n[o.key]; return n; }); }
       else { let m = t("sendErr"); try { const j = await r.json(); if (j.error) m = j.error; } catch (e) {} flash(m); }
     } catch (e) { flash(t("localOnly")); } finally { setEnviando(null); }
   };
-
-  const cards = occDia.filter((o) => cuerpoMap[o.key] !== undefined);
-  const sinArchivos = occDia.filter((o) => cuerpoMap[o.key] === undefined);
 
   if (!soporta) return (<><div className="sechead"><div><h2>{t("sendScaffTitle")}</h2></div></div><div className="state err">{t("zoomUnsupported")}</div></>);
 
@@ -639,23 +648,25 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
       {cargando && <div className="state load">{t("zoomScanning")}</div>}
       {!cargando && dir && cards.length === 0 && sinAsig.length === 0 && <div className="empty">{t("zoomNoFiles")}</div>}
 
-      {cards.map((o) => {
-        const dest = destMap[o.key] || []; const imgs = imgsMap[o.key] || [];
+      {cards.map((card) => {
+        const o = card.o;
+        const dest = destEdit[o.key] || o.alumnoIds;
         const restantes = alumnos.filter((a) => !dest.includes(a.id));
         const tituloOrig = o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join(", ");
         const color = o.alumnoIds.length === 1 ? (alumnoDe(o.alumnoIds[0])?.color || GRUPO_COLOR) : GRUPO_COLOR;
+        const body = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.bodyDefault;
         return (
           <div key={o.key} className="msgcard" style={{ borderLeft: `4px solid ${color}` }}>
             <div className="mt">{o.ini}–{o.fin} · {tituloOrig}{o.alumnoIds.length > 1 ? ` (${t("group")})` : ""}</div>
-            <div className="zrow"><span className="zlabel">{/* destinatarios */}</span>
-              {dest.map((id) => { const a = alumnoDe(id); if (!a) return null; return <span key={id} className="zchip"><span className="pd" style={{ background: a.color }} />{a.nombre}<span className="x" onClick={() => rmDest(o.key, id)}>✕</span></span>; })}
-              {restantes.length > 0 && <select className="zsel" value="" onChange={(e) => e.target.value && addDest(o.key, Number(e.target.value))}><option value="">{t("sendTo")}</option>{restantes.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>}
+            <div className="zrow">
+              {dest.map((id) => { const a = alumnoDe(id); if (!a) return null; return <span key={id} className="zchip"><span className="pd" style={{ background: a.color }} />{a.nombre}<span className="x" onClick={() => rmDest(o.key, id, o.alumnoIds)}>✕</span></span>; })}
+              {restantes.length > 0 && <select className="zsel" value="" onChange={(e) => e.target.value && addDest(o.key, Number(e.target.value), o.alumnoIds)}><option value="">{t("sendTo")}</option>{restantes.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>}
             </div>
-            {imgs.length > 0 && <div className="zrow">{imgs.map((im) => <span key={im.id} className="fchip">🖼 {im.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => rmImg(o.key, im.id)}>✕</span></span>)}</div>}
+            {card.imgs.length > 0 && <div className="zrow">{card.imgs.map((im) => <span key={im.key} className="fchip">🖼 {im.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => sacarImg(im.key)}>✕</span></span>)}</div>}
             <div className="zlabel" style={{ marginTop: 10 }}>{t("zoomPreview")}</div>
-            <textarea className="ztxt" value={cuerpoMap[o.key]} onChange={(e) => setCuerpoMap((p) => ({ ...p, [o.key]: e.target.value }))} />
+            <textarea className="ztxt" value={body} onChange={(e) => setCuerpoEdit((p) => ({ ...p, [o.key]: e.target.value }))} />
             <div className="foot" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-              <button className="btn btn-primary sm" disabled={enviando === o.key} onClick={() => enviar(o)}>{enviando === o.key ? t("sending") : t("send")}</button>
+              <button className="btn btn-primary sm" disabled={enviando === o.key} onClick={() => enviar(card)}>{enviando === o.key ? t("sending") : t("send")}</button>
             </div>
           </div>
         );
@@ -665,13 +676,13 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
         <div className="msgcard" style={{ borderLeft: "4px solid var(--honey)" }}>
           <div className="mt">{t("zoomUnassigned")}</div>
           {sinAsig.map((f) => (
-            <div key={f.id} className="zrow">
+            <div key={f.key} className="zrow">
               <span className="fchip">{f.tipo === "img" ? "🖼" : "📄"} {f.name}</span>
               <select className="zsel" value="" onChange={(e) => e.target.value && asignar(f, e.target.value)}>
                 <option value="">{t("zoomAssignTo")}</option>
                 {occDia.map((o) => <option key={o.key} value={o.key}>{o.ini} · {o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join(", ")}</option>)}
               </select>
-              <button className="linklike" style={{ color: "#B5524A" }} onClick={() => descartar(f.id)}>{t("zoomDiscard")}</button>
+              <button className="linklike" style={{ color: "#B5524A" }} onClick={() => descartar(f.key)}>{t("zoomDiscard")}</button>
             </div>
           ))}
         </div>
