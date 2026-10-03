@@ -276,7 +276,7 @@ function Landing({ i18n, setLang, cargando, error, alumnos, onProfesor, onAlumno
     <div className="wrap">
       <div className="landing-bg"><span className="blob lb1" /><span className="blob lb2" /><span className="blob lb3" /><span className="blob lb4" /></div>
       <div className="landing">
-      <div className="mark">Aula</div>
+      <div className="mark">Aula virtual</div>
       <div className="sub">{t("subtitle")}</div>
       <div className="langrow">
         <div className="langpick">
