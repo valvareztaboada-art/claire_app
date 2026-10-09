@@ -563,9 +563,11 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
     setCargando(true);
     try {
       const out = []; let i = 0;
+      const corte = Date.now() - 14 * 24 * 60 * 60 * 1000; // ignorar archivos de más de 14 días
       for await (const e of walkDir(h)) {
         const file = await e.getFile(); const ext = (file.name.split(".").pop() || "").toLowerCase();
         const isImg = IMG_EXT.includes(ext), isTxt = ext === "txt"; if (!isImg && !isTxt) continue;
+        if (file.lastModified < corte) continue; // salta los viejos, ni los lee
         const o = { id: "f" + (i++), key: file.name + "|" + file.lastModified + "|" + file.size, name: file.name, tipo: isTxt ? "chat" : "img", mod: new Date(file.lastModified), file };
         if (isTxt) { try { o.lines = limpiarChat(await file.text()); } catch (e) { o.lines = []; } }
         out.push(o);
