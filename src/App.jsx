@@ -549,6 +549,7 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
   const [dirName, setDirName] = useState("");
   const hoyIdx = (() => { const d = new Date().getDay(); return d === 0 ? 5 : d - 1; })();
   const [dia, setDia] = useState(hoyIdx);
+  const [sem, setSem] = useState(0);   // 0 = esta semana, -1 = semana pasada
   const [files, setFiles] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [proc, setProc] = useState(new Set());      // archivos ya enviados/descartados (persistente)
@@ -585,8 +586,8 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
     const h = await idbGet("zoomDir"); if (h && await ensurePerm(h)) { setDir(h); setDirName(h.name); await leer(h); }
   })(); }, []);
 
-  const occDia = useMemo(() => ocurrencias(0, reglas, excepciones).filter((o) => o.dia === dia).sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia]);
-  const fechaDia = useMemo(() => { const d = mondayDate(); d.setDate(d.getDate() + dia); return d; }, [dia]);
+  const occDia = useMemo(() => ocurrencias(sem, reglas, excepciones).filter((o) => o.dia === dia).sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia, sem]);
+  const fechaDia = useMemo(() => { const d = mondayDate(); d.setDate(d.getDate() + dia + 7 * sem); return d; }, [dia, sem]);
 
   // Derivar tarjetas / sin asignar / sin archivos, aplicando ventana + override + ya procesados
   const { cards, sinAsig, sinArchivos } = useMemo(() => {
@@ -641,9 +642,13 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
       <div className="zbar">
         {!dir ? <button className="btn btn-primary" onClick={elegir}>{t("zoomSelectFolder")}</button>
           : <><span className="zlabel">📁 {t("zoomFolder")}: <b>{dirName}</b></span><button className="btn btn-ghost sm" onClick={elegir}>{t("zoomReconnect")}</button></>}
-        <span className="zlabel" style={{ marginLeft: "auto" }}>{t("zoomDay")}:</span>
+        <span className="weekpill" style={{ marginLeft: "auto" }}>
+          <button className={sem === 0 ? "on" : ""} onClick={() => setSem(0)}>{t("zoomWeekThis")}</button>
+          <button className={sem === -1 ? "on" : ""} onClick={() => setSem(-1)}>{t("zoomWeekPrev")}</button>
+        </span>
+        <span className="zlabel">{t("zoomDay")}:</span>
         <select className="zsel" value={dia} onChange={(e) => setDia(Number(e.target.value))}>
-          {DIAS.map((d, i) => <option key={i} value={i}>{d}{i === hoyIdx ? " ·" : ""}</option>)}
+          {DIAS.map((d, i) => <option key={i} value={i}>{d}{sem === 0 && i === hoyIdx ? " ·" : ""}</option>)}
         </select>
       </div>
 
