@@ -11,7 +11,7 @@ const TEACHER_PW = import.meta.env.VITE_TEACHER_PASSWORD || "";
 
 const PALETA = ["#6FA292", "#94688A", "#C39331", "#BF7452", "#5F84A2", "#B87C90", "#3E9A90", "#8C86C0", "#8A9A46", "#C86B58", "#3F7C8C", "#A96FA0"];
 const GRUPO_COLOR = "#526B93";
-const H_INI = 8, H_FIN = 17;
+const H_INI = 8, H_FIN = 18;
 const pad = (n) => String(n).padStart(2, "0");
 const HORAS = (() => { const o = []; for (let h = H_INI; h <= H_FIN; h++) for (const m of [0, 30]) { if (h === H_FIN && m === 30) break; o.push(`${pad(h)}:${pad(m)}`); } return o; })();
 const slotDe = (t) => { const [h, m] = t.split(":").map(Number); return (h - H_INI) * 2 + (m >= 30 ? 1 : 0); };
