@@ -31,6 +31,23 @@ function ocurrencias(w, reglas, excepciones) {
   return occ;
 }
 
+// Convierte las URLs sueltas dentro de un texto en links clickeables; el resto queda como texto normal.
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+function linkify(txt) {
+  return (txt || "").split(URL_RE).map((p, i) =>
+    /^https?:\/\//.test(p)
+      ? <a key={i} href={p} target="_blank" rel="noreferrer">{p}</a>
+      : <span key={i}>{p}</span>
+  );
+}
+// Saca la URL "para entrar" de un texto de Zoom (el join real), o la primera que haya.
+function zoomJoinURL(txt) {
+  const urls = (txt || "").match(URL_RE) || [];
+  return urls.find((u) => /zoom\.us\/(j|wc|s)\//i.test(u)) || urls[0] || "";
+}
+// ¿El campo tiene más que una sola URL? (o sea, pegó todo el bloque que arma Zoom)
+const esBloqueZoom = (txt) => /\s/.test((txt || "").trim());
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap');
 * { box-sizing:border-box; } body { margin:0; }
@@ -65,7 +82,8 @@ const CSS = `
 .ficha{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; border-top:4px solid var(--c); }
 .ficha .top{ display:flex; align-items:center; gap:9px; } .ficha .nm{ font-size:16px; font-weight:600; }
 .ficha .rowk{ font-size:13px; color:var(--ink-soft); margin-top:8px; word-break:break-all; } .ficha .rowk b{ color:var(--ink); font-weight:500; }
-.ficha .zoom{ font-size:12.5px; color:var(--teal); margin-top:8px; word-break:break-all; } .ficha .nt{ font-size:13px; margin-top:10px; line-height:1.5; }
+.ficha .zoom{ font-size:12.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5; word-break:break-word; white-space:pre-wrap; } .ficha .zoom a{ color:var(--corn); word-break:break-all; } .ficha .nt{ font-size:13px; margin-top:10px; line-height:1.5; }
+.zoomtext{ font-size:12.5px; color:var(--ink); line-height:1.55; white-space:pre-wrap; word-break:break-word; margin-top:2px; } .zoomtext a{ color:var(--corn); word-break:break-all; }
 .linklike{ background:none; border:0; font:inherit; font-size:13px; color:var(--teal); cursor:pointer; padding:0; } .linklike:hover{ text-decoration:underline; }
 .dot{ width:11px; height:11px; border-radius:50%; flex:none; }
 .calscroll{ overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
@@ -359,7 +377,7 @@ function Profesor({ data, busy, handlers, i18n, setLang, flash, onSalir }) {
               {alumnos.map((a) => (
                 <div key={a.id} className="ficha" style={{ "--c": a.color }}>
                   <div className="top"><span className="dot" style={{ background: a.color, width: 14, height: 14 }} /><span className="nm">{a.nombre}</span></div>
-                  <div className="rowk"><b>{t("mailShort")}</b> {a.email}</div>{a.zoom && <div className="zoom">🔗 {a.zoom}</div>}{a.notas && <div className="nt">{a.notas}</div>}
+                  <div className="rowk"><b>{t("mailShort")}</b> {a.email}</div>{a.zoom && <div className="zoom">🔗 {linkify(a.zoom)}</div>}{a.notas && <div className="nt">{a.notas}</div>}
                   <div style={{ marginTop: 13 }}><button className="linklike" onClick={() => setModalAlumno(a)}>{t("edit")}</button></div>
                 </div>
               ))}
@@ -748,8 +766,10 @@ function Alumno({ data, busy, handlers, flash, i18n, setLang, alumnoActivo, onSa
             <div key={c.id} className="miclase" style={{ "--c": yo.color }}>
               <div className="lbl">{c.alumnoIds.length > 1 ? t("yourClassGroup") : t("yourClass")}</div>
               <div className="big">{DIAS_LARGO[c.dia]} · {c.ini}–{c.fin}</div>
-              {yo.zoom && <a className="btn btn-primary" href={yo.zoom} target="_blank" rel="noreferrer">{t("joinZoom")}</a>}
-              {yo.zoom && <div className="zoomlink"><span className="zl">{t("orCopy")}</span><div className="linkcopy"><code>{yo.zoom}</code><button onClick={() => copiar(yo.zoom)}>{t("copy")}</button></div></div>}
+              {yo.zoom && <a className="btn btn-primary" href={zoomJoinURL(yo.zoom)} target="_blank" rel="noreferrer">{t("joinZoom")}</a>}
+              {yo.zoom && (esBloqueZoom(yo.zoom)
+                ? <div className="zoomlink"><span className="zl">{t("zoomDetails")}</span><div className="zoomtext">{linkify(yo.zoom)}</div></div>
+                : <div className="zoomlink"><span className="zl">{t("orCopy")}</span><div className="linkcopy"><code>{yo.zoom}</code><button onClick={() => copiar(yo.zoom)}>{t("copy")}</button></div></div>)}
             </div>
           ))}
         </>
