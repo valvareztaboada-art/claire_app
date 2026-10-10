@@ -10,8 +10,8 @@ const CLAIRE_WA = "5491161266205"; // 54 9 11 6126 6205
 const TEACHER_PW = import.meta.env.VITE_TEACHER_PASSWORD || "";
 
 const PALETA = ["#6FA292", "#94688A", "#C39331", "#BF7452", "#5F84A2", "#B87C90", "#3E9A90", "#8C86C0", "#8A9A46", "#C86B58", "#3F7C8C", "#A96FA0"];
-const GRUPO_COLOR = "#5C7C77";
-const H_INI = 8, H_FIN = 20;
+const GRUPO_COLOR = "#526B93";
+const H_INI = 8, H_FIN = 17;
 const pad = (n) => String(n).padStart(2, "0");
 const HORAS = (() => { const o = []; for (let h = H_INI; h <= H_FIN; h++) for (const m of [0, 30]) { if (h === H_FIN && m === 30) break; o.push(`${pad(h)}:${pad(m)}`); } return o; })();
 const slotDe = (t) => { const [h, m] = t.split(":").map(Number); return (h - H_INI) * 2 + (m >= 30 ? 1 : 0); };
@@ -24,10 +24,11 @@ function ocurrencias(w, reglas, excepciones) {
   const exW = excepciones.filter((e) => e.semana === w);
   const cancelOcc = new Set(exW.filter((e) => e.tipo === "cancelOcc").map((e) => e.reglaId));
   const movMap = {}; exW.filter((e) => e.tipo === "mover").forEach((m) => { movMap[m.reglaId] = m; });
-  let occ = reglas.filter((r) => !cancelOcc.has(r.id)).map((r) => { const m = movMap[r.id]; return { key: `r${r.id}`, reglaId: r.id, alumnoIds: [...(m ? m.alumnoIds : r.alumnoIds)], dia: m ? m.dia : r.dia, ini: m ? m.ini : r.ini, fin: m ? m.fin : r.fin }; });
+  let occ = reglas.filter((r) => !cancelOcc.has(r.id)).map((r) => { const m = movMap[r.id]; return { key: `r${r.id}`, reglaId: r.id, tipo: r.tipo || "clase", etiqueta: r.etiqueta || "", alumnoIds: [...(m ? m.alumnoIds : r.alumnoIds)], dia: m ? m.dia : r.dia, ini: m ? m.ini : r.ini, fin: m ? m.fin : r.fin }; });
   exW.filter((e) => e.tipo === "cancel").forEach((e) => { const o = occ.find((o) => o.reglaId === e.reglaId); if (o) o.alumnoIds = o.alumnoIds.filter((id) => id !== e.alumnoId); });
-  occ = occ.filter((o) => o.alumnoIds.length);
-  exW.filter((e) => e.tipo === "extra").forEach((e) => occ.push({ key: `e${e.id}`, excId: e.id, alumnoIds: [...e.alumnoIds], dia: e.dia, ini: e.ini, fin: e.fin }));
+  occ = occ.filter((o) => o.tipo === "bloqueo" || o.alumnoIds.length);
+  exW.filter((e) => e.tipo === "extra").forEach((e) => occ.push({ key: `e${e.id}`, excId: e.id, tipo: "clase", etiqueta: "", alumnoIds: [...e.alumnoIds], dia: e.dia, ini: e.ini, fin: e.fin }));
+  exW.filter((e) => e.tipo === "bloqueo").forEach((e) => occ.push({ key: `b${e.id}`, excId: e.id, tipo: "bloqueo", etiqueta: e.etiqueta || "", alumnoIds: [], dia: e.dia, ini: e.ini, fin: e.fin }));
   return occ;
 }
 
@@ -51,7 +52,7 @@ const esBloqueZoom = (txt) => /\s/.test((txt || "").trim());
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap');
 * { box-sizing:border-box; } body { margin:0; }
-.aula { --paper:#F5F4ED; --panel:#FFFFFF; --ink:#241F33; --ink-soft:#726B85; --teal:#8B6EC7; --teal-deep:#6B4EA8; --honey:#F6A93A; --corn:#5E84E2; --primrose:#F7EC8D; --line:#E7E3DA; --line-soft:#EFECE4; --danger:#B5524A;
+.aula { --paper:#F5F4ED; --panel:#FFFFFF; --ink:#191939; --ink-soft:#5E6A82; --teal:#2C5BA0; --teal-deep:#1B3A68; --honey:#ECB44D; --corn:#3E72B8; --primrose:#F2E199; --line:#E7E3DA; --line-soft:#EFECE4; --danger:#B5524A;
   font-family:'Inter',system-ui,sans-serif; color:var(--ink); background:var(--paper); min-height:100vh; -webkit-font-smoothing:antialiased; }
 .aula h1,.aula h2,.aula h3{ font-family:'Bricolage Grotesque',sans-serif; font-weight:700; margin:0; letter-spacing:-.01em; }
 .wrap{ max-width:1080px; margin:0 auto; padding:22px 20px 70px; }
@@ -93,9 +94,9 @@ const CSS = `
 .cal .hourlab{ grid-column:1; font-size:11.5px; color:var(--ink-soft); padding:3px 8px 0 0; text-align:right; border-right:1px solid var(--line); }
 .cal .cell{ border-bottom:1px solid var(--line-soft); border-right:1px solid var(--line-soft); }
 .cal .cell.hour{ border-bottom:1px solid var(--line); }
-.cal .cell.free{ cursor:pointer; } .cal .cell.free:hover{ background:#EAF5F2; }
-.cal .cell.pick.free:hover{ background:#DCEFE9; }
-.cal .cell.sel{ background:#CFE9E2 !important; box-shadow:inset 0 0 0 2px var(--teal); }
+.cal .cell.free{ cursor:pointer; } .cal .cell.free:hover{ background:#E8F1FB; }
+.cal .cell.pick.free:hover{ background:#D7E6FA; }
+.cal .cell.sel{ background:#CFE0F5 !important; box-shadow:inset 0 0 0 2px var(--teal); }
 .clase{ margin:2px; border-radius:8px; padding:5px 8px; overflow:hidden; cursor:pointer; z-index:2; transition:.12s; border-left:3px solid var(--c); background:color-mix(in srgb,var(--c) 14%,#fff); }
 .clase:hover{ box-shadow:0 3px 10px rgba(22,48,45,.14); transform:translateY(-1px); }
 .clase.plain{ cursor:default; } .clase.plain:hover{ transform:none; box-shadow:none; }
@@ -103,6 +104,7 @@ const CSS = `
 .clase .cn{ font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .clase .ch{ font-size:11px; color:var(--ink-soft); }
 .clase .exc{ font-size:9.5px; color:var(--honey); font-weight:700; }
 .clase.hold{ background:repeating-linear-gradient(45deg,#F4ECDA,#F4ECDA 6px,#EFE3C7 6px,#EFE3C7 12px); border-left-color:var(--honey); }
+.clase.bloqueo{ background:repeating-linear-gradient(45deg,#EDEFF4,#EDEFF4 6px,#E1E5EE 6px,#E1E5EE 12px); border-left-color:#8A93A6; color:#4A5163; }
 .legend{ display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; } .legend span{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); }
 .overlay{ position:fixed; inset:0; background:rgba(22,48,45,.34); display:flex; align-items:center; justify-content:center; padding:20px; z-index:50; }
 .modal{ background:var(--panel); border-radius:16px; padding:22px; width:100%; max-width:440px; max-height:90vh; overflow:auto; box-shadow:0 20px 50px rgba(22,48,45,.25); }
@@ -140,7 +142,7 @@ const CSS = `
 .flowbox .fa{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
 .acceptbar{ display:flex; gap:8px; align-items:center; margin-top:12px; flex-wrap:wrap; font-size:13px; color:var(--ink-soft); }
 .landing{ max-width:440px; margin:7vh auto 0; text-align:center; position:relative; z-index:1; }
-.landing .mark{ font-family:'Bricolage Grotesque',sans-serif; font-size:58px; font-weight:800; letter-spacing:-.03em; line-height:1; background:linear-gradient(96deg,#6B4EA8,#5E84E2 45%,#F6A93A); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.landing .mark{ font-family:'Bricolage Grotesque',sans-serif; font-size:58px; font-weight:800; letter-spacing:-.03em; line-height:1; background:linear-gradient(96deg,#1B3A68,#3E72B8 42%,#ECB44D); -webkit-background-clip:text; background-clip:text; color:transparent; }
 .landing-bg{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
 .landing-bg .blob{ position:absolute; border-radius:50%; filter:blur(72px); opacity:.26; }
 .landing-bg .lb1{ width:42vw; height:44vw; left:-8vw; top:-10vw; background:radial-gradient(circle at 45% 45%, var(--teal), transparent 70%); }
@@ -221,14 +223,15 @@ export default function App() {
     borrarAlumno: (id, done) => run(async () => { await api.borrarAlumno(id); done && done(); }),
     guardarOcc: (form, occ, semana, done) => run(async () => {
       const monISO = api.mondayISO(semana);
+      const exTipo = form.bloqueo ? "bloqueo" : "extra";
       if (occ && occ.reglaId) {
         if (form.recurrente) { await api.editarRegla(occ.reglaId, form); await api.borrarExcepcionMover(occ.reglaId, monISO); }
-        else { await api.borrarExcepcionMover(occ.reglaId, monISO); await api.crearExcepcion({ semanaISO: monISO, tipo: "mover", reglaId: occ.reglaId, alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin }); }
+        else { await api.borrarExcepcionMover(occ.reglaId, monISO); await api.crearExcepcion({ semanaISO: monISO, tipo: "mover", reglaId: occ.reglaId, alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin, etiqueta: form.etiqueta }); }
       } else if (occ && occ.excId) {
         await api.borrarExcepcion(occ.excId);
-        if (form.recurrente) await api.crearRegla(form); else await api.crearExcepcion({ semanaISO: monISO, tipo: "extra", alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin });
+        if (form.recurrente) await api.crearRegla(form); else await api.crearExcepcion({ semanaISO: monISO, tipo: exTipo, alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin, etiqueta: form.etiqueta });
       } else {
-        if (form.recurrente) await api.crearRegla(form); else await api.crearExcepcion({ semanaISO: monISO, tipo: "extra", alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin });
+        if (form.recurrente) await api.crearRegla(form); else await api.crearExcepcion({ semanaISO: monISO, tipo: exTipo, alumnoIds: form.alumnoIds, dia: form.dia, ini: form.ini, fin: form.fin, etiqueta: form.etiqueta });
       }
       done && done();
     }),
@@ -362,6 +365,7 @@ function Profesor({ data, busy, handlers, i18n, setLang, flash, onSalir }) {
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="weekpill"><button className={semana === 0 ? "on" : ""} onClick={() => setSemana(0)}>{t("thisWeek")}</button><button className={semana === 1 ? "on" : ""} onClick={() => setSemana(1)}>{t("nextWeek")}</button></div>
               <button className="btn btn-primary" disabled={!alumnos.length} onClick={() => setModalClase({ nuevo: true, alumnoIds: alumnos[0] ? [alumnos[0].id] : [], dia: 0, ini: "09:00", fin: "10:00" })}>{t("newClass")}</button>
+              <button className="btn btn-ghost" onClick={() => setModalClase({ nuevo: true, bloqueo: true, alumnoIds: [], dia: 0, ini: "12:00", fin: "13:00", etiqueta: "" })}>{t("blockBtn")}</button>
             </div>
           </div>
           <SemanaCal occ={occSemana} alumnos={alumnos} alumnoDe={alumnoDe} onEditar={setModalClase} i18n={i18n} />
@@ -445,8 +449,8 @@ function SemanaCal({ occ, alumnos, alumnoDe, onEditar, i18n }) {
         {DIAS.map((d, i) => <div key={i} className="colhead" style={{ gridColumn: i + 2 }}>{d}</div>)}
         {Array.from({ length: H_FIN - H_INI }, (_, i) => <div key={i} className="hourlab" style={{ gridRow: i * 2 + 2, gridRowEnd: "span 2" }}>{pad(H_INI + i)}:00</div>)}
         {cells}
-        {occ.map((o) => { const s = slotDe(o.ini), span = Math.max(1, slotDe(o.fin) - s);
-          return <div key={o.key} className="clase" style={{ gridColumn: o.dia + 2, gridRow: `${s + 2} / span ${span}`, "--c": color(o) }} onClick={() => onEditar(o)}><div className="cn">{label(o)}</div><div className="ch">{o.ini}–{o.fin}</div>{o.excId && <div className="exc">{t("onlyThisWeek")}</div>}</div>;
+        {occ.map((o) => { const s = slotDe(o.ini), span = Math.max(1, slotDe(o.fin) - s); const bloq = o.tipo === "bloqueo";
+          return <div key={o.key} className={`clase${bloq ? " bloqueo" : ""}`} style={{ gridColumn: o.dia + 2, gridRow: `${s + 2} / span ${span}`, "--c": bloq ? "#8A93A6" : color(o) }} onClick={() => onEditar(o)}><div className="cn">{bloq ? (o.etiqueta || t("blocked")) : label(o)}</div><div className="ch">{o.ini}–{o.fin}</div>{o.excId && <div className="exc">{t("onlyThisWeek")}</div>}</div>;
         })}
       </div></div>
       <div className="legend">{alumnos.map((a) => <span key={a.id}><span className="dot" style={{ background: a.color }} />{a.nombre.split(" ")[0]}</span>)}<span><span className="dot" style={{ background: GRUPO_COLOR }} />{t("group")}</span></div>
@@ -559,6 +563,8 @@ async function* walkDir(dir) { for await (const e of dir.values()) { if (e.kind 
 async function ensurePerm(h) { try { const o = { mode: "read" }; if ((await h.queryPermission(o)) === "granted") return true; return (await h.requestPermission(o)) === "granted"; } catch (e) { return false; } }
 const saludoFR = (nombres) => { const n = nombres.length <= 1 ? (nombres[0] || "") : nombres.slice(0, -1).join(", ") + " et " + nombres.slice(-1); return `Bonjour ${n}, je t'envoie ce qu'on a vu aujourd'hui en cours.`; };
 const numerar = (lines, start = 1) => lines.map((l, i) => `${start + i}. ${l}`).join("\n");
+// Texto (UTF-8) -> base64, para mandar el contenido de la clase como archivo .txt
+const b64Text = (s) => btoa(unescape(encodeURIComponent(s || "")));
 
 function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
   const { t, DIAS } = i18n;
@@ -604,7 +610,7 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
     const h = await idbGet("zoomDir"); if (h && await ensurePerm(h)) { setDir(h); setDirName(h.name); await leer(h); }
   })(); }, []);
 
-  const occDia = useMemo(() => ocurrencias(sem, reglas, excepciones).filter((o) => o.dia === dia).sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia, sem]);
+  const occDia = useMemo(() => ocurrencias(sem, reglas, excepciones).filter((o) => o.dia === dia && o.tipo !== "bloqueo").sort((a, b) => slotDe(a.ini) - slotDe(b.ini)), [reglas, excepciones, dia, sem]);
   const fechaDia = useMemo(() => { const d = mondayDate(); d.setDate(d.getDate() + dia + 7 * sem); return d; }, [dia, sem]);
 
   // Derivar tarjetas / sin asignar / sin archivos, aplicando ventana + override + ya procesados
@@ -623,10 +629,8 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
       const fs = byClass[o.key];
       const imgs = fs.filter((f) => f.tipo === "img");
       let lines = []; fs.filter((f) => f.tipo === "chat").forEach((c) => { lines = lines.concat(c.lines || []); });
-      const dest = destEdit[o.key] || o.alumnoIds;
-      const nombres = dest.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).filter(Boolean);
-      const bodyDefault = saludoFR(nombres) + (lines.length ? "\n\n\n" + numerar(lines) : "");
-      return { o, imgs, fileKeys: fs.map((f) => f.key), bodyDefault };
+      const contenidoDefault = lines.length ? numerar(lines) : "";
+      return { o, imgs, fileKeys: fs.map((f) => f.key), contenidoDefault };
     });
     const sinArchivos = occDia.filter((o) => (byClass[o.key] || []).length === 0);
     return { cards, sinAsig: un, sinArchivos };
@@ -643,9 +647,15 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
     setEnviando(o.key);
     try {
       const to = dest.map((id) => alumnoDe(id)?.email).filter(Boolean).join(", ");
+      const nombres = dest.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).filter(Boolean);
       const attachments = [];
       for (const im of card.imgs) attachments.push({ filename: im.name, content: await fileB64(im.file), contentType: im.file.type || undefined });
-      const text = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.bodyDefault;
+      const contenido = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.contenidoDefault;
+      if (contenido && contenido.trim()) {
+        const y = fechaDia.getFullYear(), mo = pad(fechaDia.getMonth() + 1), d2 = pad(fechaDia.getDate());
+        attachments.push({ filename: `cours_${y}-${mo}-${d2}.txt`, content: b64Text(contenido), contentType: "text/plain; charset=utf-8" });
+      }
+      const text = saludoFR(nombres) + "\n\nà bientôt\n-C";
       const r = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: "Cours de français", text, attachments }) });
       if (r.ok) { flash(t("sentOk")); marcarProc(card.fileKeys); setCuerpoEdit((p) => { const n = { ...p }; delete n[o.key]; return n; }); setDestEdit((p) => { const n = { ...p }; delete n[o.key]; return n; }); }
       else { let m = t("sendErr"); try { const j = await r.json(); if (j.error) m = j.error; } catch (e) {} flash(m); }
@@ -679,7 +689,7 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
         const restantes = alumnos.filter((a) => !dest.includes(a.id));
         const tituloOrig = o.alumnoIds.map((id) => alumnoDe(id)?.nombre.split(" ")[0]).join(", ");
         const color = o.alumnoIds.length === 1 ? (alumnoDe(o.alumnoIds[0])?.color || GRUPO_COLOR) : GRUPO_COLOR;
-        const body = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.bodyDefault;
+        const body = cuerpoEdit[o.key] !== undefined ? cuerpoEdit[o.key] : card.contenidoDefault;
         return (
           <div key={o.key} className="msgcard" style={{ borderLeft: `4px solid ${color}` }}>
             <div className="mt">{o.ini}–{o.fin} · {tituloOrig}{o.alumnoIds.length > 1 ? ` (${t("group")})` : ""}</div>
@@ -688,8 +698,9 @@ function EnviosTab({ reglas, excepciones, alumnos, alumnoDe, i18n, flash }) {
               {restantes.length > 0 && <select className="zsel" value="" onChange={(e) => e.target.value && addDest(o.key, Number(e.target.value), o.alumnoIds)}><option value="">{t("sendTo")}</option>{restantes.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>}
             </div>
             {card.imgs.length > 0 && <div className="zrow">{card.imgs.map((im) => <span key={im.key} className="fchip">🖼 {im.name}<span style={{ cursor: "pointer", marginLeft: 6, color: "#B5524A", fontWeight: 700 }} onClick={() => sacarImg(im.key)}>✕</span></span>)}</div>}
-            <div className="zlabel" style={{ marginTop: 10 }}>{t("zoomPreview")}</div>
+            <div className="zlabel" style={{ marginTop: 10 }}>{t("zoomTxtPreview")}</div>
             <textarea className="ztxt" value={body} onChange={(e) => setCuerpoEdit((p) => ({ ...p, [o.key]: e.target.value }))} />
+            <div className="zlabel" style={{ marginTop: 6, fontStyle: "italic" }}>{t("zoomMailNote")}</div>
             <div className="foot" style={{ justifyContent: "flex-end", marginTop: 10 }}>
               <button className="btn btn-primary sm" disabled={enviando === o.key} onClick={() => enviar(card)}>{enviando === o.key ? t("sending") : t("send")}</button>
             </div>
@@ -822,14 +833,14 @@ function Alumno({ data, busy, handlers, flash, i18n, setLang, alumnoActivo, onSa
                 return <div key={`s${d}-${h}`} className={`cell hour${free ? " free" : ""}${eligiendo ? " pick" : ""}${isSel ? " sel" : ""}`} style={{ gridColumn: d + 2, gridRow: `${s + 2} / span 2` }} onClick={free ? () => { if (eligiendo) setSel({ dia: d, h, semana }); else flash(t("cancelFirst")); } : undefined} />;
               }))}
               {occ.map((o) => { const s = slotDe(o.ini), span = Math.max(1, slotDe(o.fin) - s); const mia = o.alumnoIds.includes(alumnoActivo);
-                return <div key={o.key} className={`clase plain${mia ? " mine" : ""}`} style={{ gridColumn: o.dia + 2, gridRow: `${s + 2} / span ${span}`, "--c": mia ? yo.color : "#9AAAA6" }}><div className="cn">{mia ? t("myClass") : t("occupied")}</div><div className="ch">{o.ini}</div></div>;
+                return <div key={o.key} className={`clase plain${mia ? " mine" : ""}`} style={{ gridColumn: o.dia + 2, gridRow: `${s + 2} / span ${span}`, "--c": mia ? yo.color : "#8A93A6" }}><div className="cn">{mia ? t("myClass") : t("occupied")}</div><div className="ch">{o.ini}</div></div>;
               })}
               {solicitudes.filter((s) => s.semana === semana).map((s) => { const st = slotDe(s.slot.ini);
                 return <div key={s.id} className="clase plain hold" style={{ gridColumn: s.slot.dia + 2, gridRow: `${st + 2} / span 2` }}><div className="cn">{t("reserved")}</div><div className="ch">·</div></div>;
               })}
             </div></div>
             {eligiendo && <div className="acceptbar">{sel ? <><span><b>{t("youPicked", { day: DIAS_LARGO[sel.dia], time: `${pad(sel.h)}:00`, when: sel.semana === 0 ? t("whenThis") : t("whenNext") })}</b></span><button className="btn btn-primary sm" disabled={busy} onClick={aceptarNuevo}>{t("accept")}</button></> : <span>{t("tapFree")}</span>}</div>}
-            <div className="legend"><span><span className="dot" style={{ background: yo.color }} />{t("myClass")}</span><span><span className="dot" style={{ background: "#9AAAA6" }} />{t("occupied")}</span><span><span className="dot" style={{ background: "#EFE3C7" }} />{t("reserved")}</span><span><span className="dot" style={{ background: "#EAF5F2", border: "1px solid #cbdbd6" }} />{t("free")}</span></div>
+            <div className="legend"><span><span className="dot" style={{ background: yo.color }} />{t("myClass")}</span><span><span className="dot" style={{ background: "#8A93A6" }} />{t("occupied")}</span><span><span className="dot" style={{ background: "#EFE3C7" }} />{t("reserved")}</span><span><span className="dot" style={{ background: "#E8F1FB", border: "1px solid #C3D5EC" }} />{t("free")}</span></div>
           </div>
         </>
       )}
@@ -840,19 +851,22 @@ function Alumno({ data, busy, handlers, flash, i18n, setLang, alumnoActivo, onSa
 function ClaseModal({ occ, semana, alumnos, busy, i18n, onGuardar, onEliminar, onCerrar }) {
   const { t, DIAS, MESES } = i18n;
   const esNuevo = !!occ.nuevo;
-  const [f, setF] = useState({ alumnoIds: occ.alumnoIds || [], dia: occ.dia ?? 0, ini: occ.ini || "09:00", fin: occ.fin || "10:00", recurrente: esNuevo ? true : !!occ.reglaId });
+  const esBloqueo = !!occ.bloqueo || occ.tipo === "bloqueo";
+  const [f, setF] = useState({ alumnoIds: occ.alumnoIds || [], dia: occ.dia ?? 0, ini: occ.ini || "09:00", fin: occ.fin || "10:00", recurrente: esNuevo ? true : !!occ.reglaId, bloqueo: esBloqueo, tipo: esBloqueo ? "bloqueo" : "clase", etiqueta: occ.etiqueta || "" });
   const set = (k, v) => setF({ ...f, [k]: v });
   const toggle = (id) => set("alumnoIds", f.alumnoIds.includes(id) ? f.alumnoIds.filter((x) => x !== id) : [...f.alumnoIds, id]);
   return (
     <div className="overlay" onClick={onCerrar}><div className="modal" onClick={(e) => e.stopPropagation()}>
-      <h3>{esNuevo ? t("newClassT") : t("editClassT")}</h3>
+      <h3>{esBloqueo ? (esNuevo ? t("newBlockT") : t("editBlockT")) : (esNuevo ? t("newClassT") : t("editClassT"))}</h3>
       <div className="msub">{t("youAreIn", { range: rangoSemana(semana, MESES) })}</div>
-      <div className="field"><label>{t("studentsLabel")}</label><div className="picklist">{alumnos.map((a) => <label key={a.id}><input type="checkbox" checked={f.alumnoIds.includes(a.id)} onChange={() => toggle(a.id)} /><span className="pd" style={{ background: a.color }} />{a.nombre}</label>)}</div>
-        {f.alumnoIds.length > 1 && <div className="note-grupo">{t("groupNote", { n: f.alumnoIds.length })}</div>}</div>
+      {esBloqueo
+        ? <div className="field"><label>{t("blockLabel")}</label><input value={f.etiqueta} onChange={(e) => set("etiqueta", e.target.value)} placeholder={t("blockPh")} /></div>
+        : <div className="field"><label>{t("studentsLabel")}</label><div className="picklist">{alumnos.map((a) => <label key={a.id}><input type="checkbox" checked={f.alumnoIds.includes(a.id)} onChange={() => toggle(a.id)} /><span className="pd" style={{ background: a.color }} />{a.nombre}</label>)}</div>
+        {f.alumnoIds.length > 1 && <div className="note-grupo">{t("groupNote", { n: f.alumnoIds.length })}</div>}</div>}
       <div className="field"><label>{t("day")}</label><select value={f.dia} onChange={(e) => set("dia", Number(e.target.value))}>{DIAS.map((d, i) => <option key={i} value={i}>{d}</option>)}</select></div>
       <div className="row2"><div className="field"><label>{t("starts")}</label><select value={f.ini} onChange={(e) => set("ini", e.target.value)}>{HORAS.map((h) => <option key={h}>{h}</option>)}</select></div><div className="field"><label>{t("ends")}</label><select value={f.fin} onChange={(e) => set("fin", e.target.value)}>{HORAS.map((h) => <option key={h}>{h}</option>)}</select></div></div>
       <div className="foreverbox"><label className="chk"><input type="checkbox" checked={f.recurrente} onChange={(e) => set("recurrente", e.target.checked)} />{t("repeats")}</label><div className="exp">{f.recurrente ? t("repeatsOn") : t("repeatsOff")}</div></div>
-      <div className="macts">{!esNuevo ? <button className="linklike" style={{ color: "#B5524A" }} disabled={busy} onClick={() => onEliminar(f.recurrente)}>{f.recurrente ? t("deleteAll") : t("deleteWeek")}</button> : <span />}<div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={!f.alumnoIds.length || busy} onClick={() => onGuardar(f)}>{busy ? t("saving") : t("save")}</button></div></div>
+      <div className="macts">{!esNuevo ? <button className="linklike" style={{ color: "#B5524A" }} disabled={busy} onClick={() => onEliminar(f.recurrente)}>{f.recurrente ? t("deleteAll") : t("deleteWeek")}</button> : <span />}<div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={onCerrar}>{t("cancel")}</button><button className="btn btn-primary" disabled={(!esBloqueo && !f.alumnoIds.length) || busy} onClick={() => onGuardar(f)}>{busy ? t("saving") : t("save")}</button></div></div>
     </div></div>
   );
 }

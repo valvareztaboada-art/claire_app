@@ -29,17 +29,17 @@ export async function borrarAlumno(id) {
 
 // ─── REGLAS ───────────────────────────────────────────────────────────
 export async function loadReglas() {
-  const { data, error } = await supabase.from("reglas").select("id,dia,ini,fin,regla_alumnos(alumno_id)").order("dia", { ascending: true });
+  const { data, error } = await supabase.from("reglas").select("id,dia,ini,fin,tipo,etiqueta,regla_alumnos(alumno_id)").order("dia", { ascending: true });
   if (error) throw error;
-  return (data || []).map((r) => ({ id: r.id, dia: r.dia, ini: r.ini, fin: r.fin, alumnoIds: (r.regla_alumnos || []).map((x) => x.alumno_id) }));
+  return (data || []).map((r) => ({ id: r.id, dia: r.dia, ini: r.ini, fin: r.fin, tipo: r.tipo || "clase", etiqueta: r.etiqueta || "", alumnoIds: (r.regla_alumnos || []).map((x) => x.alumno_id) }));
 }
-export async function crearRegla({ alumnoIds, dia, ini, fin }) {
-  const { data, error } = await supabase.from("reglas").insert({ dia, ini, fin }).select("id").single();
+export async function crearRegla({ alumnoIds, dia, ini, fin, tipo = "clase", etiqueta = null }) {
+  const { data, error } = await supabase.from("reglas").insert({ dia, ini, fin, tipo, etiqueta }).select("id").single();
   if (error) throw error;
   if (alumnoIds?.length) { const { error: e2 } = await supabase.from("regla_alumnos").insert(alumnoIds.map((aid) => ({ regla_id: data.id, alumno_id: aid }))); if (e2) throw e2; }
 }
-export async function editarRegla(id, { alumnoIds, dia, ini, fin }) {
-  const { error } = await supabase.from("reglas").update({ dia, ini, fin }).eq("id", id);
+export async function editarRegla(id, { alumnoIds, dia, ini, fin, tipo = "clase", etiqueta = null }) {
+  const { error } = await supabase.from("reglas").update({ dia, ini, fin, tipo, etiqueta }).eq("id", id);
   if (error) throw error;
   const { error: e2 } = await supabase.from("regla_alumnos").delete().eq("regla_id", id); if (e2) throw e2;
   if (alumnoIds?.length) { const { error: e3 } = await supabase.from("regla_alumnos").insert(alumnoIds.map((aid) => ({ regla_id: id, alumno_id: aid }))); if (e3) throw e3; }
@@ -55,11 +55,11 @@ export async function loadExcepciones(mon0, mon1) {
   if (error) throw error;
   return (data || []).map((r) => ({
     id: r.id, semana: r.semana_inicio === mon0 ? 0 : 1, tipo: r.tipo, reglaId: r.regla_id, alumnoId: r.alumno_id,
-    alumnoIds: (r.excepcion_alumnos || []).map((x) => x.alumno_id), dia: r.dia, ini: r.ini, fin: r.fin,
+    alumnoIds: (r.excepcion_alumnos || []).map((x) => x.alumno_id), dia: r.dia, ini: r.ini, fin: r.fin, etiqueta: r.etiqueta || "",
   }));
 }
-export async function crearExcepcion({ semanaISO, tipo, reglaId = null, alumnoId = null, alumnoIds = null, dia = null, ini = null, fin = null }) {
-  const { data, error } = await supabase.from("excepciones").insert({ semana_inicio: semanaISO, tipo, regla_id: reglaId, alumno_id: alumnoId, dia, ini, fin }).select("id").single();
+export async function crearExcepcion({ semanaISO, tipo, reglaId = null, alumnoId = null, alumnoIds = null, dia = null, ini = null, fin = null, etiqueta = null }) {
+  const { data, error } = await supabase.from("excepciones").insert({ semana_inicio: semanaISO, tipo, regla_id: reglaId, alumno_id: alumnoId, dia, ini, fin, etiqueta }).select("id").single();
   if (error) throw error;
   if (alumnoIds?.length) { const { error: e2 } = await supabase.from("excepcion_alumnos").insert(alumnoIds.map((aid) => ({ excepcion_id: data.id, alumno_id: aid }))); if (e2) throw e2; }
 }
